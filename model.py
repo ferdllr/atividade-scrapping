@@ -27,3 +27,10 @@ class ProductList:
                 Product(nome.get_text(strip=True), preco.get_text(strip=True))
             )
         return products
+
+    def melhor_compra(self) -> Product:
+        product_dicts = {}
+        for product in self.products:
+            product.append({f"{product.nome}": product.preco})
+        minor_price = min(product_dicts.items(), key=lambda item: item[1])
+        return Product(minor_price[0], minor_price[1])
