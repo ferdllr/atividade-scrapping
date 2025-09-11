@@ -1,1 +1,23 @@
+# Arquivos de cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Pasta do ambiente virtual
 venv/
+.venv/
+
+# Arquivos de configuração de IDEs
+.vscode/
+.idea/
+
+# Arquivos de saída e relatórios gerados pelo script
+*.json
+*.txt
+*.log
+
+# Pastas com páginas salvas
+Search.html
+Search_arquivos/
+dentrodoproduto/
