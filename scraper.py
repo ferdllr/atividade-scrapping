@@ -74,11 +74,11 @@ class ScraperProduto:
                         )
                         produtos.append(produto)
                         
-                except (NoSuchElementException, Exception):
+                except NoSuchElementException:
                     continue
                     
-        except (TimeoutException, Exception):
-            pass
+        except TimeoutException:
+            print("  - Nenhum produto encontrado na página ou tempo de espera esgotado.")
             
         return produtos
 
@@ -116,11 +116,15 @@ class ScraperProduto:
         
         produtos_rankeados = []
         for nome_grupo, produtos in grupos_produto.items():
-            frequencia = len(produtos)
             melhor_produto = min(produtos, key=lambda p: p.preco)
-            melhor_produto.frequencia = frequencia
+            melhor_produto.frequencia = len(produtos)
+            
+            todas_cores = {cor for p in produtos for cor in p.nome.split() if normalizar_nome_produto(cor) == ''}
+            todos_tamanhos = {tam for p in produtos for tam in p.nome.split() if normalizar_nome_produto(tam) == ''}
+
+            melhor_produto.detalhes = DetalhesProduto(coletado_em="", descricao="", material="", cores_disponiveis=list(todas_cores), tamanhos_disponiveis=list(todos_tamanhos))
             produtos_rankeados.append(melhor_produto)
-        
+            
         produtos_rankeados.sort(key=lambda x: (-x.frequencia, x.preco))
         return produtos_rankeados
 
@@ -142,8 +146,10 @@ class ScraperProduto:
 
             elementos_cor = self.driver.find_elements(By.CSS_SELECTOR, 'div.selectColorContainer img')
             cores_disponiveis = {elem.get_attribute("alt") for elem in elementos_cor if elem.get_attribute("alt")}
+            if produto.detalhes and produto.detalhes.cores_disponiveis:
+                cores_disponiveis.update(produto.detalhes.cores_disponiveis)
 
-            elementos_tamanho = self.driver.find_elements(By.CSS_SELECTOR, 'div[attribute-selections] input[onclick^="selectAttribute"]:not([disabled])')
+            elementos_tamanho = self.driver.find_elements(By.CSS_SELECTOR, 'div.selectedSize input[onclick^="selectAttribute"]:not([disabled])')
             tamanhos_disponiveis = {elem.get_attribute("attribute-value") for elem in elementos_tamanho}
 
             material = "Material não especificado"
@@ -152,13 +158,12 @@ class ScraperProduto:
                     material = linha.strip()
                     break
             
-            return DetalhesProduto(
-                coletado_em=time.strftime("%Y-%m-%d %H:%M:%S"),
-                descricao=descricao,
-                cores_disponiveis=list(cores_disponiveis),
-                tamanhos_disponiveis=list(tamanhos_disponiveis),
-                material=material
-            )
+            produto.detalhes.coletado_em = time.strftime("%Y-%m-%d %H:%M:%S")
+            produto.detalhes.descricao = descricao
+            produto.detalhes.material = material
+            produto.detalhes.cores_disponiveis = list(cores_disponiveis)
+            produto.detalhes.tamanhos_disponiveis = list(tamanhos_disponiveis)
+            return produto.detalhes
         except (WebDriverException, TimeoutException) as e:
             print(f"      Erro ao coletar detalhes para {produto.nome}: {e}")
             return None
@@ -190,13 +195,18 @@ class ScraperProduto:
             
             if 'cores_disponiveis' in df_final.columns:
                 df_final['cores_disponiveis'] = df_final['cores_disponiveis'].apply(
-                    lambda cores: ', '.join(cores) if isinstance(cores, list) else ''
+                    lambda cores: ', '.join(sorted(list(set(cores)))) if isinstance(cores, list) else ''
                 )
             if 'tamanhos_disponiveis' in df_final.columns:
                 df_final['tamanhos_disponiveis'] = df_final['tamanhos_disponiveis'].apply(
-                    lambda tamanhos: ', '.join(tamanhos) if isinstance(tamanhos, list) else ''
+                    lambda tamanhos: ', '.join(sorted(list(set(tamanhos)))) if isinstance(tamanhos, list) else ''
                 )
 
+            # Limpa a coluna de descrição para melhor visualização no CSV
+            if 'descricao' in df_final.columns:
+                df_final['descricao'] = df_final['descricao'].str.replace('\n', ' ', regex=False).str.strip()
+
+            # Renomeia as colunas para o relatório final
             mapa_nomes = {
                 'nome': 'Produto',
                 'preco': 'Preço (R$)',
@@ -211,6 +221,23 @@ class ScraperProduto:
                 'coletado_em': 'Data da Coleta'
             }
             df_final = df_final.rename(columns=mapa_nomes)
+            
+            # Define uma ordem de colunas mais legível para o relatório
+            colunas_ordenadas = [
+                'Produto',
+                'Variações Encontradas',
+                'Preço (R$)',
+                'Preço Original (R$)',
+                'Desconto (%)',
+                'Cores Disponíveis',
+                'Tamanhos Disponíveis',
+                'Material',
+                'Descrição',
+                'Link',
+                'Data da Coleta'
+            ]
+            colunas_existentes = [col for col in colunas_ordenadas if col in df_final.columns]
+            df_final = df_final[colunas_existentes]
             
             nome_arquivo_csv = f"top_5_produtos_{termo_busca}.csv"
             df_final.to_csv(nome_arquivo_csv, index=False, encoding='utf-8-sig')
