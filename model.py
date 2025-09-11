@@ -1,36 +1,42 @@
-from bs4 import BeautifulSoup
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+import re
 
 
-class Product:
-    def __init__(self, nome, preco) -> None:
-        self.nome = nome
-        self.preco = preco
+@dataclass
+class DetalhesProduto:
+    coletado_em: str
+    descricao: str
+    material: str
+    cores_disponiveis: List[str] = field(default_factory=list)
+    tamanhos_disponiveis: List[str] = field(default_factory=list)
 
-    def __repr__(self) -> str:
-        return f"nome: {self.nome} preco: {self.preco}"
 
+@dataclass
+class Produto:
+    nome: str
+    preco: float
+    preco_original: float
+    url: str
+    percentual_desconto: float = 0.0
+    frequencia: int = 0
+    detalhes: Optional[DetalhesProduto] = None
 
-class ProductList:
-    def __init__(self, divs):
-        self.divs = divs
-        self.products = self.get_produtos()
+    def __post_init__(self):
+        if self.preco_original > self.preco:
+            self.percentual_desconto = round(((self.preco_original - self.preco) / self.preco_original) * 100, 2)
 
-    def get_produtos(self):
-        products = []
-        for div in self.divs:
-            nome = div.find(
-                "p",
-                class_="text-left truncate lg:w-full w-[165px] overflow-hidden whitespace-nowrap lg:text-sm text-xs text-primaryBlack font-medium leading-[21px] lg:mr-[10px] mr-0 uppercase lg:text-left",
-            )
-            preco = div.find("h2")
-            products.append(
-                Product(nome.get_text(strip=True), preco.get_text(strip=True))
-            )
-        return products
+def formatar_preco(preco_str: str) -> float:
+    if not preco_str:
+        return 0.0
+    preco_limpo = re.sub(r'[R$\s]', '', preco_str).replace('.', '').replace(',', '.')
+    try:
+        return float(preco_limpo)
+    except ValueError:
+        return 0.0
 
-    def melhor_compra(self) -> Product:
-        product_dicts = {}
-        for product in self.products:
-            product.append({f"{product.nome}": product.preco})
-        minor_price = min(product_dicts.items(), key=lambda item: item[1])
-        return Product(minor_price[0], minor_price[1])
+def normalizar_nome_produto(nome: str) -> str:
+    normalizado = re.sub(r'\b(PP|P|M|G|GG|XG|XXG)\b', '', nome.upper())
+    normalizado = re.sub(r'\b(PRETO|BRANCO|AZUL|VERDE|VERMELHO|AMARELO|ROSA|ROXO)\b', '', normalizado)
+    normalizado = re.sub(r'\s+', ' ', normalizado).strip()
+    return normalizado
