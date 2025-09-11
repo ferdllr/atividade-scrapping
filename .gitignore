@@ -16,8 +16,3 @@ venv/
 *.json
 *.txt
 *.log
-
-# Pastas com páginas salvas
-Search.html
-Search_arquivos/
-dentrodoproduto/

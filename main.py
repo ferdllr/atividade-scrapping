@@ -1,15 +1,14 @@
-import time
 import json
 import re
-from collections import Counter
+import time
 from dataclasses import dataclass
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
+
 from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
 @dataclass
 class Product:
@@ -157,43 +156,32 @@ class ProductScraper:
 
     def get_product_details(self, product: Product) -> Optional[Dict]:
         print(f"    Coletando detalhes de: {product.name}")
-        try:
-            self.driver.get(product.url)
-            WebDriverWait(self.driver, 15).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".vtex-store-components-3-x-productNameContainer"))
-            )
-            details = {
-                "url": product.url,
-                "collected_at": time.strftime("%Y-%m-%d %H:%M:%S")
-            }
-            try:
-                desc_elem = self.driver.find_element(By.CSS_SELECTOR, ".vtex-store-components-3-x-productDescriptionContainer .vtex-rich-text-0-x-container")
-                details["description"] = desc_elem.text.strip()
-            except NoSuchElementException:
-                details["description"] = "Descrição não disponível"
+        self.driver.get(product.url)
+        WebDriverWait(self.driver, 15).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#description-title"))
+        )
+        details = {
+            "collected_at": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
 
-            details["available_sizes"] = []
-            details["available_colors"] = []
-            try:
-                sku_selectors = self.driver.find_elements(By.CSS_SELECTOR, ".vtex-store-components-3-x-skuSelectorContainer")
-                for selector in sku_selectors:
-                    label_text = selector.find_element(By.CSS_SELECTOR, ".vtex-store-components-3-x-skuSelectorName").text.strip().lower()
-                    options = [opt.text.strip() for opt in selector.find_elements(By.CSS_SELECTOR, ".vtex-store-components-3-x-skuSelectorItem .vtex-store-components-3-x-skuSelectorName") if opt.text.strip()]
-                    if "tamanho" in label_text:
-                        details["available_sizes"] = options
-                    elif "cor" in label_text:
-                        details["available_colors"] = options
-            except NoSuchElementException:
-                pass
-            try:
-                material_elem = self.driver.find_element(By.CSS_SELECTOR, ".material-info, .fabric-info, .composition")
-                details["material"] = material_elem.text.strip()
-            except NoSuchElementException:
-                details["material"] = "Material não especificado"
-            return details
-        except (TimeoutException, Exception) as e:
-            print(f"    Erro ao coletar detalhes: {e}")
-            return None
+        self.driver.find_element(By.ID, "description-title").click()
+        description_content = WebDriverWait(self.driver, 5).until(EC.visibility_of_element_located((By.ID, "description-content")))
+        details["description"] = description_content.text.strip()
+
+        color_elements = self.driver.find_elements(By.CSS_SELECTOR, 'div.selectColorContainer img')
+        available_colors = {elem.get_attribute("alt") for elem in color_elements if elem.get_attribute("alt")}
+        details["available_colors"] = list(available_colors)
+
+        size_elements = self.driver.find_elements(By.CSS_SELECTOR, 'div[attribute-selections] input[onclick^="selectAttribute"]:not([disabled])')
+        available_sizes = {elem.get_attribute("attribute-value") for elem in size_elements}
+        details["available_sizes"] = list(available_sizes)
+
+        details["material"] = "Material não especificado"
+        for line in details["description"].split('\n'):
+            if "composição:" in line.lower():
+                details["material"] = line.strip()
+                break
+        return details
 
     def save_results(self, products: List[Product], filename: str = "top_5_produtos.json") -> None:
         print(f"Salvando resultados em '{filename}'...")
